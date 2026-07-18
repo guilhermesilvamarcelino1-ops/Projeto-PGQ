@@ -1,0 +1,65 @@
+import uuid
+from datetime import datetime
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict
+
+
+class DocumentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    title: str
+    category: str
+    kind: Literal["procedimento", "administrativo"]
+    site_id: uuid.UUID | None
+    version: int
+    status: Literal["active", "archived"]
+    uploaded_at: datetime
+
+
+class DocumentUploadResponse(BaseModel):
+    document: DocumentOut
+    chunks_created: int
+
+
+class ChatRequest(BaseModel):
+    user_id: uuid.UUID
+    conversation_id: uuid.UUID | None = None
+    channel: Literal["web", "whatsapp"] = "web"
+    media_type: Literal["text", "audio", "image"] = "text"
+    text: str | None = None
+    media_url: str | None = None
+
+
+class SourceRef(BaseModel):
+    document_title: str
+    section_ref: str | None = None
+    page_ref: int | None = None
+
+
+class ChatResponse(BaseModel):
+    conversation_id: uuid.UUID
+    answer: str
+    had_fallback: bool
+    sources: list[SourceRef] = []
+    document_file_path: str | None = None
+
+
+class QuestionLogOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    content: str
+    had_fallback: bool
+    created_at: datetime
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
