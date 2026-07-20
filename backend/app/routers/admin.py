@@ -1,10 +1,9 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import get_current_admin
-from app.db import get_db
-from app.models import Conversation, Message, User
+from app.auth import Principal, get_current_admin
+from app.db import tenant_session
+from app.models import Conversation, Message
 from app.schemas import QuestionLogOut
 
 router = APIRouter(prefix="/admin/questions", tags=["admin"])
@@ -14,23 +13,21 @@ router = APIRouter(prefix="/admin/questions", tags=["admin"])
 async def list_questions(
     only_fallback: bool = Query(False),
     limit: int = Query(50, le=200),
-    admin: User = Depends(get_current_admin),
-    db: AsyncSession = Depends(get_db),
+    admin: Principal = Depends(get_current_admin),
 ):
-    result = await db.execute(
-        select(Message, Conversation.id)
-        .join(Conversation, Message.conversation_id == Conversation.id)
-        .join(User, Conversation.user_id == User.id)
-        .where(User.company_id == admin.company_id)
-        .order_by(Conversation.id, Message.created_at)
-    )
-    rows = result.all()
+    async with tenant_session(admin.company_id) as db:
+        result = await db.execute(
+            select(Message)
+            .join(Conversation, Message.conversation_id == Conversation.id)
+            .order_by(Conversation.id, Message.created_at)
+        )
+        messages = result.scalars().all()
 
-    # Pair each user question with the assistant reply that follows it in the same
-    # conversation, so we can report had_fallback per question without a fragile SQL join.
+    # Emparelha cada pergunta do usuário com a resposta do assistente que veio na
+    # sequência, para reportar had_fallback por pergunta sem depender de join frágil.
     pairs: list[QuestionLogOut] = []
     pending_question: Message | None = None
-    for message, _ in rows:
+    for message in messages:
         if message.role == "user":
             pending_question = message
         elif message.role == "assistant" and pending_question is not None:

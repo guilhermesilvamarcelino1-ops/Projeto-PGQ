@@ -23,15 +23,6 @@ class DocumentUploadResponse(BaseModel):
     chunks_created: int
 
 
-class ChatRequest(BaseModel):
-    user_id: uuid.UUID
-    conversation_id: uuid.UUID | None = None
-    channel: Literal["web", "whatsapp"] = "web"
-    media_type: Literal["text", "audio", "image"] = "text"
-    text: str | None = None
-    media_url: str | None = None
-
-
 class SourceRef(BaseModel):
     document_title: str
     section_ref: str | None = None
@@ -58,6 +49,11 @@ class QuestionLogOut(BaseModel):
 class LoginRequest(BaseModel):
     email: str
     password: str
+
+
+class FieldLoginRequest(BaseModel):
+    phone_number: str
+    pin: str
 
 
 class TokenResponse(BaseModel):

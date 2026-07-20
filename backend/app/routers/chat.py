@@ -4,10 +4,10 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import Principal, get_principal
 from app.config import settings
-from app.db import get_db
+from app.db import tenant_session
 from app.models import Conversation, Message, User
 from app.schemas import ChatResponse, SourceRef
 from app.services.contacts import find_responsible_contact
@@ -27,33 +27,19 @@ def _store_media(company_id: uuid.UUID, filename: str, data: bytes) -> str:
 
 @router.post("/message", response_model=ChatResponse)
 async def send_message(
-    user_id: uuid.UUID = Form(...),
     conversation_id: uuid.UUID | None = Form(None),
-    channel: Literal["web", "whatsapp"] = Form("web"),
     media_type: Literal["text", "audio", "image"] = Form("text"),
     text: str | None = Form(None),
     file: UploadFile | None = File(None),
-    db: AsyncSession = Depends(get_db),
+    principal: Principal = Depends(get_principal),
 ):
-    user_result = await db.execute(select(User).where(User.id == user_id))
-    user = user_result.scalar_one_or_none()
-    if user is None:
-        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    # A empresa e o usuário vêm do token assinado — nunca de um campo do cliente.
+    company_id = principal.company_id
 
     if media_type in ("audio", "image") and file is None:
         raise HTTPException(status_code=400, detail=f"Envie um arquivo para media_type={media_type}")
     if media_type == "text" and not text:
         raise HTTPException(status_code=400, detail="Envie o texto da pergunta")
-
-    if conversation_id is not None:
-        conv_result = await db.execute(select(Conversation).where(Conversation.id == conversation_id))
-        conversation = conv_result.scalar_one_or_none()
-        if conversation is None:
-            raise HTTPException(status_code=404, detail="Conversa não encontrada")
-    else:
-        conversation = Conversation(user_id=user.id, site_id=user.site_id, channel=channel)
-        db.add(conversation)
-        await db.flush()
 
     media_url: str | None = None
     transcript: str | None = None
@@ -61,43 +47,66 @@ async def send_message(
 
     if media_type == "audio":
         audio_bytes = await file.read()
-        media_url = _store_media(user.company_id, file.filename, audio_bytes)
+        media_url = _store_media(company_id, file.filename, audio_bytes)
         transcript = await transcribe_audio(audio_bytes, file.filename)
         query_text = transcript
     elif media_type == "image":
         image_bytes = await file.read()
-        media_url = _store_media(user.company_id, file.filename, image_bytes)
-        # MVP: a foto só fica anexada como contexto/registro — sem análise visual nesta fase.
+        media_url = _store_media(company_id, file.filename, image_bytes)
+        # MVP: a foto só fica anexada como registro — sem análise visual nesta fase.
         query_text = text or "(foto anexada, sem pergunta em texto)"
 
-    user_message = Message(
-        conversation_id=conversation.id,
-        role="user",
-        content=query_text,
-        media_type=media_type,
-        media_url=media_url,
-        transcript=transcript,
-    )
-    db.add(user_message)
-    await db.flush()
+    # Todo o trabalho de dados roda com o contexto da empresa fixado (RLS ativo).
+    async with tenant_session(company_id) as db:
+        user = (await db.execute(select(User).where(User.id == principal.user_id))).scalar_one_or_none()
+        if user is None:
+            raise HTTPException(status_code=404, detail="Usuário não encontrado")
 
-    contact = await find_responsible_contact(db, company_id=user.company_id, site_id=user.site_id)
-    result = await answer_question(
-        db, company_id=user.company_id, site_id=user.site_id, query=query_text, contact=contact
-    )
+        if conversation_id is not None:
+            conversation = (
+                await db.execute(select(Conversation).where(Conversation.id == conversation_id))
+            ).scalar_one_or_none()
+            if conversation is None:
+                raise HTTPException(status_code=404, detail="Conversa não encontrada")
+        else:
+            conversation = Conversation(
+                company_id=company_id, user_id=user.id, site_id=user.site_id, channel="web"
+            )
+            db.add(conversation)
+            await db.flush()
 
-    assistant_message = Message(
-        conversation_id=conversation.id,
-        role="assistant",
-        content=result.answer,
-        chunks_used=result.chunks_used or None,
-        had_fallback=result.had_fallback,
-    )
-    db.add(assistant_message)
-    await db.commit()
+        db.add(
+            Message(
+                conversation_id=conversation.id,
+                company_id=company_id,
+                role="user",
+                content=query_text,
+                media_type=media_type,
+                media_url=media_url,
+                transcript=transcript,
+            )
+        )
+        await db.flush()
+
+        contact = await find_responsible_contact(db, company_id=company_id, site_id=user.site_id)
+        result = await answer_question(
+            db, company_id=company_id, site_id=user.site_id, query=query_text, contact=contact
+        )
+
+        db.add(
+            Message(
+                conversation_id=conversation.id,
+                company_id=company_id,
+                role="assistant",
+                content=result.answer,
+                chunks_used=result.chunks_used or None,
+                had_fallback=result.had_fallback,
+            )
+        )
+        conv_id = conversation.id
 
     return ChatResponse(
-        conversation_id=conversation.id,
+        conversation_id=conv_id,
         answer=result.answer,
         had_fallback=result.had_fallback,
         sources=[SourceRef(**s) for s in result.sources],

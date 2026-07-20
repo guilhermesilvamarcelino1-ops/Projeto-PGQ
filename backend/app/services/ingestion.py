@@ -74,6 +74,7 @@ async def ingest_document(
             db.add(
                 DocumentChunk(
                     document_id=document.id,
+                    company_id=company_id,
                     content=raw_chunk.content,
                     embedding=embedding,
                     page_ref=raw_chunk.page_ref,
@@ -82,6 +83,7 @@ async def ingest_document(
             )
         chunks_created = len(raw_chunks)
 
-    await db.commit()
-    await db.refresh(document)
+    # Não faz commit aqui: a transação (e o contexto de RLS) é controlada pelo
+    # tenant_session do endpoint chamador.
+    await db.flush()
     return document, chunks_created

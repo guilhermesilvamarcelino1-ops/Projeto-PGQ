@@ -14,8 +14,12 @@ export interface ChatResponse {
   document_file_path?: string | null;
 }
 
-export async function sendChatMessage(form: FormData): Promise<ChatResponse> {
-  const res = await fetch(`${API_BASE}/chat/message`, { method: "POST", body: form });
+export async function sendChatMessage(form: FormData, token: string): Promise<ChatResponse> {
+  const res = await fetch(`${API_BASE}/chat/message`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
   if (!res.ok) {
     const detail = await res.json().catch(() => ({}));
     throw new Error(detail.detail || "Erro ao enviar mensagem");
@@ -30,6 +34,17 @@ export async function login(email: string, password: string): Promise<string> {
     body: JSON.stringify({ email, password }),
   });
   if (!res.ok) throw new Error("Email ou senha inválidos");
+  const data = await res.json();
+  return data.access_token as string;
+}
+
+export async function fieldLogin(phoneNumber: string, pin: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/auth/field-login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone_number: phoneNumber, pin }),
+  });
+  if (!res.ok) throw new Error("Telefone ou PIN inválidos");
   const data = await res.json();
   return data.access_token as string;
 }

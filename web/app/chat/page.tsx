@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { API_BASE, ChatResponse, sendChatMessage } from "@/lib/api";
+import { API_BASE, ChatResponse, fieldLogin, sendChatMessage } from "@/lib/api";
 
 interface DisplayMessage {
   role: "user" | "assistant";
@@ -12,8 +12,14 @@ interface DisplayMessage {
 }
 
 export default function ChatPage() {
-  // No MVP o número/telefone identifica o usuário; aqui usamos o user_id direto para teste interno.
-  const [userId, setUserId] = useState("");
+  // Identidade do time de campo: telefone + PIN emitem um token; a empresa vem do
+  // token (server-side), nunca é escolhida pelo cliente. No WhatsApp esta etapa é
+  // dispensada — o número verificado pela Meta identifica o usuário.
+  const [token, setToken] = useState<string | null>(null);
+  const [phone, setPhone] = useState("");
+  const [pin, setPin] = useState("");
+  const [authError, setAuthError] = useState<string | null>(null);
+
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -22,11 +28,17 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleSend() {
-    if (!userId) {
-      setError("Informe o ID do usuário de campo.");
-      return;
+  async function handleLogin() {
+    setAuthError(null);
+    try {
+      setToken(await fieldLogin(phone, pin));
+    } catch (e) {
+      setAuthError((e as Error).message);
     }
+  }
+
+  async function handleSend() {
+    if (!token) return;
     setError(null);
     setLoading(true);
 
@@ -34,15 +46,13 @@ export default function ChatPage() {
     setMessages((m) => [...m, { role: "user", text: userLabel }]);
 
     const form = new FormData();
-    form.append("user_id", userId);
     if (conversationId) form.append("conversation_id", conversationId);
-    form.append("channel", "web");
     form.append("media_type", mediaType);
     if (text) form.append("text", text);
     if (file) form.append("file", file);
 
     try {
-      const res = await sendChatMessage(form);
+      const res = await sendChatMessage(form, token);
       setConversationId(res.conversation_id);
       setMessages((m) => [
         ...m,
@@ -64,17 +74,43 @@ export default function ChatPage() {
     }
   }
 
+  if (!token) {
+    return (
+      <div className="container">
+        <h2>Entrar — Chat do time de campo</h2>
+        <div className="card">
+          <label>Telefone (com DDI, ex: +5511999990000)</label>
+          <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <label>PIN</label>
+          <input
+            className="input"
+            type="password"
+            value={pin}
+            onChange={(e) => setPin(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+          />
+          <div className="row" style={{ marginTop: 12 }}>
+            <button className="btn" onClick={handleLogin}>
+              Entrar
+            </button>
+            {authError && <span style={{ color: "#c0392b" }}>{authError}</span>}
+          </div>
+        </div>
+        <p className="muted">
+          No WhatsApp esse login não existe — o número já identifica você. Aqui na web é só pra teste
+          interno com segurança.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="container">
-      <h2>Chat — dúvidas de procedimento</h2>
-      <div className="card">
-        <label>ID do usuário de campo</label>
-        <input
-          className="input"
-          value={userId}
-          onChange={(e) => setUserId(e.target.value)}
-          placeholder="uuid do usuário (cadastrado na obra)"
-        />
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <h2>Chat — dúvidas de procedimento</h2>
+        <button className="btn" onClick={() => setToken(null)}>
+          Sair
+        </button>
       </div>
 
       <div className="messages">
@@ -146,8 +182,8 @@ export default function ChatPage() {
         </div>
       </div>
       <p className="muted">
-        A resposta vem sempre dos procedimentos cadastrados. Quando não há resposta no material, o
-        assistente indica o responsável técnico — não inventa.
+        A resposta vem sempre dos procedimentos cadastrados da sua empresa. Quando não há resposta no
+        material, o assistente indica o responsável técnico — não inventa.
       </p>
     </div>
   );

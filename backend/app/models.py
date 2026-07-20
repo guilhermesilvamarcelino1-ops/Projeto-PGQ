@@ -45,6 +45,7 @@ class User(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     email: Mapped[str | None] = mapped_column(String, nullable=True, unique=True)
     password_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    pin_hash: Mapped[str | None] = mapped_column(String, nullable=True)  # login do time de campo (web)
 
 
 class Document(Base):
@@ -74,6 +75,7 @@ class DocumentChunk(Base):
 
     id: Mapped[uuid.UUID] = uuid_pk()
     document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("documents.id"), nullable=False)
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     embedding = mapped_column(Vector(EMBEDDING_DIM), nullable=False)
     page_ref: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -87,6 +89,7 @@ class Conversation(Base):
     __table_args__ = (CheckConstraint("channel in ('web','whatsapp')", name="conversations_channel_check"),)
 
     id: Mapped[uuid.UUID] = uuid_pk()
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     site_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sites.id"), nullable=True)
     channel: Mapped[str] = mapped_column(String, nullable=False)
@@ -102,6 +105,7 @@ class Message(Base):
 
     id: Mapped[uuid.UUID] = uuid_pk()
     conversation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("conversations.id"), nullable=False)
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
     role: Mapped[str] = mapped_column(String, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     media_type: Mapped[str] = mapped_column(String, default="text")
