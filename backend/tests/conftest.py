@@ -14,6 +14,7 @@ from app.services.retrieval import RetrievedChunk
 def make_chunk(document_title: str, content: str, section_ref: str | None = None, page_ref: int | None = None):
     return RetrievedChunk(
         chunk_id=uuid.uuid4(),
+        document_id=uuid.uuid4(),
         content=content,
         document_title=document_title,
         page_ref=page_ref,

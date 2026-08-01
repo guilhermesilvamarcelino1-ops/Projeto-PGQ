@@ -97,8 +97,12 @@ export default function DocumentsPage() {
         <label>ID da obra (opcional, recomendado para administrativo)</label>
         <input className="input" value={siteId} onChange={(e) => setSiteId(e.target.value)} placeholder="uuid da obra" />
 
-        <label>Arquivo (PDF/DOCX)</label>
-        <input type="file" accept=".pdf,.docx" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+        <label>Arquivo (PDF)</label>
+        <input type="file" accept=".pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+        <p className="muted">
+          Procedimentos devem ser enviados em PDF — é o que permite abrir o documento direto na página
+          citada na resposta. Se o arquivo estiver em Word, salve como PDF antes de enviar.
+        </p>
 
         <label>...ou cole o texto do procedimento</label>
         <textarea className="textarea" rows={4} value={plainText} onChange={(e) => setPlainText(e.target.value)} />

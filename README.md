@@ -14,9 +14,45 @@ os próprios procedimentos.
   - `/chat` — chat do time de campo (texto, áudio ou foto).
   - `/admin` — painel de qualidade/planejamento (login, upload de documentos, log de perguntas).
 
+### Como o Procede fala
+
+Assistente de conversa (sem menus): o time de campo pergunta em linguagem natural, por texto, áudio
+ou foto. O tom é português de canteiro de obra — frases curtas, tratamento por "você", trata a pessoa
+pelo primeiro nome, e não dá opinião própria: repassa o que o procedimento diz.
+
+**Quando encontra a resposta**, sempre nesta ordem: resposta curta → trecho **literal** do documento
+entre aspas → link que abre o PDF direto na página citada.
+
+```
+Valdir, a superfície deve ser mantida úmida por no mínimo 7 dias.
+
+📄 POP de Concretagem, item 4.3:
+“a cura deve garantir a superfície permanentemente úmida por período não inferior a 7 dias”
+
+🔗 Abrir o procedimento (página 12):
+https://…/documents/<id>/file?t=<token>#page=12
+```
+
+**Quando não encontra**, nunca inventa nem complementa com conhecimento geral:
+
+```
+Valdir, não encontrei essa informação nos procedimentos cadastrados.
+
+⚠️ Não posso responder por conta própria. Fale com o responsável técnico: Eng. Marcos, (11) 98888-7777
+```
+
+O formato da mensagem é montado em Python (`format_answer` / `format_fallback` em
+`app/services/rag.py`), não deixado a cargo do modelo — assim ele nunca varia. O modelo só devolve
+dados estruturados (resposta, trecho literal, qual trecho usou).
+
+O link carrega um token assinado com validade na própria URL, porque o WhatsApp não envia cabeçalho
+de autenticação; ele é restrito a um documento de uma empresa.
+
 ### Dois tipos de documento ("pasta mãe")
 
 - `procedimento` — POP, FVS, memoriais. É quebrado em trechos, indexado e pesquisado via RAG.
+  **Exigido em PDF**: é o formato que preserva a paginação, o que permite abrir o documento na página
+  citada (e, adiante, destacar o trecho na imagem).
 - `administrativo` — alvará, habite-se, ART, contratos. Indexado só por metadado (obra + tipo) e
   devolvido como arquivo inteiro quando o usuário pede ("me manda o alvará do empreendimento X").
 
@@ -96,6 +132,9 @@ pergunta.
 
 - Canal WhatsApp (Meta Cloud API direto) — o fluxo de RAG já é agnóstico de canal; falta só a camada
   de webhook.
+- **Print do trecho destacado**: além do link para a página, gerar uma imagem da página do PDF com a
+  frase marcada em amarelo e enviá-la junto da resposta. O passo seguinte natural, já que os
+  procedimentos são exigidos em PDF e a resposta já sabe a página e o trecho literal.
 - Análise visual da foto (comparar imagem com o procedimento via Claude) — hoje a foto só é anexada
   como registro.
 - Multi-tenant real (o schema já carrega `company_id` em tudo), cobrança/assinatura, e a frente de

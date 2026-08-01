@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { API_BASE, ChatResponse, fieldLogin, sendChatMessage } from "@/lib/api";
+import { ChatResponse, fieldLogin, sendChatMessage } from "@/lib/api";
 
 interface DisplayMessage {
   role: "user" | "assistant";
@@ -9,6 +9,27 @@ interface DisplayMessage {
   fallback?: boolean;
   sources?: ChatResponse["sources"];
   documentPath?: string | null;
+}
+
+/** A resposta já vem formatada para o celular (quebras de linha, trecho citado e link).
+ *  Aqui preservamos as quebras e tornamos o link do procedimento clicável. */
+function AnswerText({ text }: { text: string }) {
+  return (
+    <div style={{ whiteSpace: "pre-wrap" }}>
+      {text.split("\n").map((line, i) => (
+        <span key={i}>
+          {line.startsWith("http") ? (
+            <a href={line} target="_blank" rel="noopener noreferrer">
+              abrir documento
+            </a>
+          ) : (
+            line
+          )}
+          {"\n"}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 export default function ChatPage() {
@@ -121,26 +142,7 @@ export default function ChatPage() {
             </div>
           ) : (
             <div key={i} className={`bubble-assistant ${m.fallback ? "bubble-fallback" : ""}`}>
-              <div>{m.text}</div>
-              {m.sources && m.sources.length > 0 && (
-                <div className="sources">
-                  Fonte:{" "}
-                  {m.sources
-                    .map((s) =>
-                      [s.document_title, s.section_ref && `seção ${s.section_ref}`, s.page_ref && `pág. ${s.page_ref}`]
-                        .filter(Boolean)
-                        .join(", ")
-                    )
-                    .join(" · ")}
-                </div>
-              )}
-              {m.documentPath && (
-                <div className="sources">
-                  <a href={`${API_BASE}/health`} onClick={(e) => e.preventDefault()}>
-                    Arquivo: {m.documentPath.split("/").pop()}
-                  </a>
-                </div>
-              )}
+              <AnswerText text={m.text} />
             </div>
           )
         )}

@@ -89,8 +89,14 @@ async def send_message(
         await db.flush()
 
         contact = await find_responsible_contact(db, company_id=company_id, site_id=user.site_id)
+        first_name = user.name.split()[0] if user.name else None
         result = await answer_question(
-            db, company_id=company_id, site_id=user.site_id, query=query_text, contact=contact
+            db,
+            company_id=company_id,
+            site_id=user.site_id,
+            query=query_text,
+            contact=contact,
+            user_first_name=first_name,
         )
 
         db.add(
@@ -109,6 +115,16 @@ async def send_message(
         conversation_id=conv_id,
         answer=result.answer,
         had_fallback=result.had_fallback,
-        sources=[SourceRef(**s) for s in result.sources],
+        sources=[
+            SourceRef(
+                document_title=s.document_title,
+                document_id=s.document_id,
+                section_ref=s.section_ref,
+                page_ref=s.page_ref,
+                quote=s.quote,
+                url=s.url,
+            )
+            for s in result.sources
+        ],
         document_file_path=result.document_file_path,
     )

@@ -12,6 +12,7 @@ from app.services.embeddings import embed_query
 @dataclass
 class RetrievedChunk:
     chunk_id: uuid.UUID
+    document_id: uuid.UUID
     content: str
     document_title: str
     page_ref: int | None
@@ -42,6 +43,7 @@ async def retrieve_chunks(
     return [
         RetrievedChunk(
             chunk_id=chunk.id,
+            document_id=chunk.document_id,
             content=chunk.content,
             document_title=title,
             page_ref=chunk.page_ref,

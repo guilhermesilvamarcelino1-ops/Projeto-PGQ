@@ -25,8 +25,11 @@ class DocumentUploadResponse(BaseModel):
 
 class SourceRef(BaseModel):
     document_title: str
+    document_id: uuid.UUID | None = None
     section_ref: str | None = None
     page_ref: int | None = None
+    quote: str | None = None
+    url: str | None = None
 
 
 class ChatResponse(BaseModel):

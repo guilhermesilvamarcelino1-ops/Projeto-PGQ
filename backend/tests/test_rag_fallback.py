@@ -1,7 +1,7 @@
-"""The RAG fallback is the most safety-critical behavior in the product: the assistant
-must never answer from general knowledge, and must say so explicitly when the retrieved
-material doesn't cover the question. These tests exercise that boundary directly against
-`answer_procedure_question` / `answer_document_request`, mocking the LLM and DB lookups.
+"""O fallback é o comportamento mais crítico do produto: o assistente nunca pode
+responder por conhecimento geral, e precisa dizer isso explicitamente quando o material
+recuperado não cobre a pergunta. Estes testes exercitam essa fronteira direto em
+`answer_procedure_question` / `answer_document_request`, com o LLM e o banco mockados.
 """
 
 import uuid
@@ -27,17 +27,22 @@ class FakeResponse:
 
 @pytest.fixture(autouse=True)
 def no_real_network(monkeypatch):
-    # Any test that forgets to mock the client should fail loudly instead of hitting the network.
+    # Qualquer teste que esqueça de mockar o cliente deve falhar alto, não ir à rede.
     monkeypatch.setattr(rag, "_client", AsyncMock())
 
 
 async def test_no_chunks_retrieved_triggers_fallback(monkeypatch):
     monkeypatch.setattr(rag, "retrieve_chunks", AsyncMock(return_value=[]))
     result = await rag.answer_procedure_question(
-        db=object(), company_id=uuid.uuid4(), query="Qual o prazo de garantia da impermeabilização?", contact="João, 11999990000"
+        db=object(),
+        company_id=uuid.uuid4(),
+        query="Qual o prazo de garantia da impermeabilização?",
+        contact="João, 11999990000",
+        user_first_name="Valdir",
     )
     assert result.had_fallback is True
     assert "João" in result.answer
+    assert "Valdir" in result.answer
     rag._client.messages.create.assert_not_called()
 
 
@@ -45,20 +50,32 @@ async def test_model_reports_not_found_triggers_fallback(monkeypatch):
     chunks = [make_chunk("POP de Concretagem", "Item 4.2: o traço deve seguir o memorial estrutural.")]
     monkeypatch.setattr(rag, "retrieve_chunks", AsyncMock(return_value=chunks))
     rag._client.messages.create = AsyncMock(
-        return_value=FakeResponse([ToolUseBlock({"found": False, "answer": "não encontrado", "citations": []})])
+        return_value=FakeResponse(
+            [ToolUseBlock({"found": False, "answer": "não encontrado", "quote": "", "source_index": 0})]
+        )
     )
 
     result = await rag.answer_procedure_question(
-        db=object(), company_id=uuid.uuid4(), query="Qual a cor da tinta usada na fachada?", contact="Maria, 11988887777"
+        db=object(),
+        company_id=uuid.uuid4(),
+        query="Qual a cor da tinta usada na fachada?",
+        contact="Maria, 11988887777",
+        user_first_name="Valdir",
     )
 
     assert result.had_fallback is True
     assert "Maria" in result.answer
+    assert "não encontrei" in result.answer.lower()
     assert result.chunks_used == []
 
 
-async def test_model_finds_answer_returns_citations_and_no_fallback(monkeypatch):
-    chunk = make_chunk("POP de Concretagem", "Item 4.2: o traço deve seguir o memorial estrutural.", section_ref="4.2")
+async def test_answer_includes_literal_quote_and_link(monkeypatch):
+    chunk = make_chunk(
+        "POP de Concretagem",
+        "Item 4.3: a cura deve manter a superfície úmida por no mínimo 7 dias.",
+        section_ref="4.3",
+        page_ref=12,
+    )
     monkeypatch.setattr(rag, "retrieve_chunks", AsyncMock(return_value=[chunk]))
     rag._client.messages.create = AsyncMock(
         return_value=FakeResponse(
@@ -66,8 +83,9 @@ async def test_model_finds_answer_returns_citations_and_no_fallback(monkeypatch)
                 ToolUseBlock(
                     {
                         "found": True,
-                        "answer": "Segundo o POP de Concretagem, item 4.2, o traço deve seguir o memorial estrutural.",
-                        "citations": [{"document_title": "POP de Concretagem", "section_ref": "4.2"}],
+                        "answer": "A superfície deve ser mantida úmida por no mínimo 7 dias.",
+                        "quote": "a cura deve manter a superfície úmida por no mínimo 7 dias",
+                        "source_index": 1,
                     }
                 )
             ]
@@ -75,12 +93,23 @@ async def test_model_finds_answer_returns_citations_and_no_fallback(monkeypatch)
     )
 
     result = await rag.answer_procedure_question(
-        db=object(), company_id=uuid.uuid4(), query="Qual traço de concreto usar na fundação?", contact=None
+        db=object(),
+        company_id=uuid.uuid4(),
+        query="Quanto tempo de cura da laje?",
+        contact=None,
+        user_first_name="Valdir",
     )
 
     assert result.had_fallback is False
+    # trata pelo nome, cita a fonte com item, traz o trecho literal e o link da página
+    assert result.answer.startswith("Valdir, ")
+    assert "POP de Concretagem, item 4.3" in result.answer
+    assert "“a cura deve manter a superfície úmida por no mínimo 7 dias”" in result.answer
+    assert "#page=12" in result.answer
+    source = result.sources[0]
+    assert source.page_ref == 12
+    assert source.quote and source.url
     assert result.chunks_used == [chunk.chunk_id]
-    assert result.sources[0]["document_title"] == "POP de Concretagem"
 
 
 async def test_document_request_without_match_triggers_fallback(monkeypatch):
@@ -91,6 +120,7 @@ async def test_document_request_without_match_triggers_fallback(monkeypatch):
         site_id=None,
         search_text="alvará empreendimento Alpha",
         contact="Carlos, 11977776666",
+        user_first_name="Valdir",
     )
     assert result.had_fallback is True
     assert "Carlos" in result.answer
@@ -111,3 +141,10 @@ async def test_answer_question_routes_document_intent_without_calling_rag_prompt
 
     lookup_mock.assert_awaited_once()
     retrieve_mock.assert_not_called()
+
+
+def test_format_answer_without_name_keeps_sentence_capitalized():
+    source = rag.Source(document_title="POP de Alvenaria", section_ref="2.1", quote="trecho literal")
+    text = rag.format_answer("A junta deve ter 10 mm.", None, source)
+    assert text.startswith("A junta deve ter 10 mm.")
+    assert "📄 POP de Alvenaria, item 2.1" in text
