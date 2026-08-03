@@ -62,6 +62,7 @@ async def ingest_document(
         version=version,
         uploaded_by=uploaded_by,
         status="active",
+        source_type="upload",
     )
     db.add(document)
     await db.flush()

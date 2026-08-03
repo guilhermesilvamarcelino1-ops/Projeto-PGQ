@@ -125,9 +125,21 @@ class RagResult:
     document_file_path: str | None = None
 
 
-def build_document_url(document_id: uuid.UUID, company_id: uuid.UUID, page_ref: int | None = None) -> str:
-    """Link que abre o documento já na página citada. O token assinado vai na própria
-    URL porque o WhatsApp não envia cabeçalho de autenticação."""
+def build_document_url(
+    document_id: uuid.UUID,
+    company_id: uuid.UUID,
+    page_ref: int | None = None,
+    external_url: str | None = None,
+) -> str:
+    """Link para o documento citado.
+
+    Quando o documento vive no sistema do cliente (SharePoint/Drive), o link aponta
+    para lá — o arquivo continua sendo dele, com as permissões e o versionamento que
+    ele já usa. Só quando a cópia é nossa é que servimos o arquivo, com um token
+    assinado na própria URL (o WhatsApp não envia cabeçalho de autenticação).
+    """
+    if external_url:
+        return external_url
     token = create_document_link_token(document_id, company_id)
     url = f"{settings.public_base_url.rstrip('/')}/documents/{document_id}/file?t={urlquote(token)}"
     if page_ref:
@@ -250,7 +262,9 @@ async def answer_procedure_question(
                 section_ref=chunk.section_ref,
                 page_ref=chunk.page_ref,
                 quote=data.get("quote") or None,
-                url=build_document_url(chunk.document_id, company_id, chunk.page_ref),
+                url=build_document_url(
+                    chunk.document_id, company_id, chunk.page_ref, external_url=chunk.external_url
+                ),
             )
             return RagResult(
                 answer=format_answer(data["answer"], user_first_name, source),
@@ -285,7 +299,7 @@ async def answer_document_request(
         )
         return RagResult(answer=f"{first}\n\n{second}", had_fallback=True)
 
-    url = build_document_url(document.id, company_id)
+    url = build_document_url(document.id, company_id, external_url=document.external_url)
     source = Source(document_title=document.title, document_id=document.id, url=url)
     prefix = _greeting(user_first_name)
     answer = (

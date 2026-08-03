@@ -17,6 +17,9 @@ class RetrievedChunk:
     document_title: str
     page_ref: int | None
     section_ref: str | None
+    # Preenchido quando o documento vive na origem (SharePoint/Drive): o link da
+    # resposta aponta para lá, em vez de servirmos uma cópia nossa.
+    external_url: str | None = None
 
 
 async def retrieve_chunks(
@@ -25,7 +28,7 @@ async def retrieve_chunks(
     query_embedding = embed_query(query)
 
     stmt = (
-        select(DocumentChunk, Document.title)
+        select(DocumentChunk, Document.title, Document.external_url)
         .join(Document, DocumentChunk.document_id == Document.id)
         .where(
             Document.company_id == company_id,
@@ -48,6 +51,7 @@ async def retrieve_chunks(
             document_title=title,
             page_ref=chunk.page_ref,
             section_ref=chunk.section_ref,
+            external_url=external_url,
         )
-        for chunk, title in rows
+        for chunk, title, external_url in rows
     ]

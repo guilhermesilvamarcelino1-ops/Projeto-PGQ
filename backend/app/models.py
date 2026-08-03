@@ -53,6 +53,9 @@ class Document(Base):
     __table_args__ = (
         CheckConstraint("kind in ('procedimento','administrativo')", name="documents_kind_check"),
         CheckConstraint("status in ('active','archived')", name="documents_status_check"),
+        CheckConstraint(
+            "source_type in ('upload','sharepoint','google_drive')", name="documents_source_type_check"
+        ),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -61,11 +64,20 @@ class Document(Base):
     category: Mapped[str] = mapped_column(String, nullable=False)
     kind: Mapped[str] = mapped_column(String, nullable=False)
     site_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sites.id"), nullable=True)
-    file_path: Mapped[str] = mapped_column(String, nullable=False)
+    # Documento vindo de conector pode não ter cópia local: o arquivo continua na origem.
+    file_path: Mapped[str | None] = mapped_column(String, nullable=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
     uploaded_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     status: Mapped[str] = mapped_column(String, default="active")
+
+    # Origem do documento. 'upload' = enviado pelo painel; os demais vêm de conector,
+    # onde o arquivo permanece no sistema do cliente e só o índice é nosso.
+    source_type: Mapped[str] = mapped_column(String, default="upload", nullable=False)
+    external_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    external_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    external_modified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     chunks: Mapped[list["DocumentChunk"]] = relationship(back_populates="document", cascade="all, delete-orphan")
 

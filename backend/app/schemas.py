@@ -16,6 +16,9 @@ class DocumentOut(BaseModel):
     version: int
     status: Literal["active", "archived"]
     uploaded_at: datetime
+    source_type: Literal["upload", "sharepoint", "google_drive"] = "upload"
+    external_url: str | None = None
+    last_synced_at: datetime | None = None
 
 
 class DocumentUploadResponse(BaseModel):

@@ -143,6 +143,36 @@ async def test_answer_question_routes_document_intent_without_calling_rag_prompt
     retrieve_mock.assert_not_called()
 
 
+async def test_link_points_to_origin_when_document_lives_in_client_system(monkeypatch):
+    """Documento vindo de conector (SharePoint/Drive): o link leva ao sistema do
+    cliente, não a uma cópia nossa."""
+    chunk = make_chunk("POP de Escavação", "Item 3.1: talude máximo de 1:1.", section_ref="3.1", page_ref=4)
+    chunk.external_url = "https://persa.sharepoint.com/sites/qualidade/POP-Escavacao.pdf"
+    monkeypatch.setattr(rag, "retrieve_chunks", AsyncMock(return_value=[chunk]))
+    rag._client.messages.create = AsyncMock(
+        return_value=FakeResponse(
+            [
+                ToolUseBlock(
+                    {
+                        "found": True,
+                        "answer": "O talude máximo é 1:1.",
+                        "quote": "talude máximo de 1:1",
+                        "source_index": 1,
+                    }
+                )
+            ]
+        )
+    )
+
+    result = await rag.answer_procedure_question(
+        db=object(), company_id=uuid.uuid4(), query="Qual talude posso deixar?", contact=None
+    )
+
+    assert result.sources[0].url == "https://persa.sharepoint.com/sites/qualidade/POP-Escavacao.pdf"
+    assert "sharepoint.com" in result.answer
+    assert "/documents/" not in result.answer  # não serve cópia nossa
+
+
 def test_format_answer_without_name_keeps_sentence_capitalized():
     source = rag.Source(document_title="POP de Alvenaria", section_ref="2.1", quote="trecho literal")
     text = rag.format_answer("A junta deve ter 10 mm.", None, source)

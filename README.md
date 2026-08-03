@@ -48,6 +48,24 @@ dados estruturados (resposta, trecho literal, qual trecho usou).
 O link carrega um token assinado com validade na própria URL, porque o WhatsApp não envia cabeçalho
 de autenticação; ele é restrito a um documento de uma empresa.
 
+### De onde vêm os documentos
+
+O **índice de busca é sempre nosso** (é o que permite responder por significado, coisa que a busca por
+palavra-chave do SharePoint não faz). Mas o **arquivo** não precisa ser: cada documento registra sua
+origem em `source_type`.
+
+- `upload` — enviado pelo painel. Guardamos a cópia e servimos o arquivo pelo nosso link assinado.
+- `sharepoint` / `google_drive` — o arquivo continua no sistema do cliente, com as permissões e o
+  versionamento que ele já usa. Guardamos só o índice, e o link da resposta aponta para `external_url`.
+
+Os conectores em si ainda não existem (Fase 2/3), mas o modelo já está preparado: `external_id`,
+`external_url`, `external_modified_at` e `last_synced_at` permitem detectar revisão na origem e
+reindexar sozinho — que é o que resolve o risco de responder com um POP desatualizado. `file_path` é
+opcional, porque documento de conector não tem cópia local.
+
+O upload continua sendo o piso: garante que qualquer cliente entra no dia 1, inclusive quem não usa
+SharePoint.
+
 ### Dois tipos de documento ("pasta mãe")
 
 - `procedimento` — POP, FVS, memoriais. É quebrado em trechos, indexado e pesquisado via RAG.

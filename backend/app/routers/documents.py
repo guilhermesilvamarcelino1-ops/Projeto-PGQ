@@ -2,7 +2,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy import select
 
 from app.auth import Principal, get_current_admin, read_document_link_token
@@ -86,7 +86,14 @@ async def get_document_file(document_id: uuid.UUID, t: str = Query(..., descript
         document = result.scalar_one_or_none()
         if document is None:
             raise HTTPException(status_code=404, detail="Documento não encontrado")
-        file_path, title = document.file_path, document.title
+        file_path, external_url = document.file_path, document.external_url
+
+    if not file_path:
+        # Documento que vive na origem (SharePoint/Drive): não guardamos cópia.
+        # O link enviado ao usuário já aponta para lá; isto é só uma rede de proteção.
+        if external_url:
+            return RedirectResponse(external_url)
+        raise HTTPException(status_code=404, detail="Documento sem arquivo disponível")
 
     path = Path(file_path)
     if not path.exists():

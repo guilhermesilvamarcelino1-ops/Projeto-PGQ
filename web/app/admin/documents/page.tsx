@@ -13,7 +13,14 @@ interface DocOut {
   version: number;
   status: string;
   uploaded_at: string;
+  source_type: "upload" | "sharepoint" | "google_drive";
 }
+
+const ORIGIN_LABEL: Record<DocOut["source_type"], string> = {
+  upload: "Enviado no painel",
+  sharepoint: "SharePoint",
+  google_drive: "Google Drive",
+};
 
 export default function DocumentsPage() {
   const router = useRouter();
@@ -123,6 +130,7 @@ export default function DocumentsPage() {
               <th>Título</th>
               <th>Categoria</th>
               <th>Tipo</th>
+              <th>Origem</th>
               <th>Versão</th>
               <th>Status</th>
             </tr>
@@ -133,6 +141,7 @@ export default function DocumentsPage() {
                 <td>{d.title}</td>
                 <td>{d.category}</td>
                 <td>{d.kind}</td>
+                <td>{ORIGIN_LABEL[d.source_type] ?? d.source_type}</td>
                 <td>v{d.version}</td>
                 <td>{d.status}</td>
               </tr>
