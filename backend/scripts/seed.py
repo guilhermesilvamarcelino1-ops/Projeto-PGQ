@@ -20,7 +20,8 @@ import os
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.auth import hash_secret
-from app.models import Company, Site, User
+from app.models import Company, Site, User, UserFamilyAccess
+from app.services.access import DEFAULT_FIELD_FAMILIES
 from app.services.identity import normalize_phone
 
 
@@ -67,6 +68,18 @@ async def seed(args):
             site_id=site.id,
         )
         db.add_all([admin, field_user, engineer])
+        await db.flush()
+
+        # Time de campo entra vendo só qualidade e obra. As famílias com dado pessoal
+        # (RH, cliente) exigem liberação explícita — ninguém as alcança por padrão.
+        for pessoa in (field_user, engineer):
+            for familia in DEFAULT_FIELD_FAMILIES:
+                db.add(
+                    UserFamilyAccess(
+                        company_id=company.id, user_id=pessoa.id, family=familia, can_upload=False
+                    )
+                )
+
         await db.commit()
 
         print("Seed concluído.")

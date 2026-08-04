@@ -97,6 +97,30 @@ uvicorn app.main:app --reload
 > As URLs usam o driver async (`postgresql+asyncpg://...`). Para rodar migrations com `psql`
 > use a URL padrão `postgresql://...`.
 
+### Taxonomia documental e permissão por família
+
+Cada empresa tem a própria taxonomia (`document_types`) — o "RQ 15" dela: código, nome, pasta,
+chave de recuperação, meio (eletrônico/físico/ambos/sistema), retenção e descarte. Ela vive no
+**banco**, não no prompt: assim cada cliente tem a sua, o modelo escolhe entre linhas que existem
+em vez de recordar uma tabela, e "documento não mapeado" vira fato verificável. A taxonomia da
+Persa (86 tipos) está em `data/taxonomia_persa_rq15.json`; `scripts/load_taxonomy.py` carrega a de
+qualquer cliente e pode ser rodado de novo sem duplicar.
+
+A retenção é **regra computável** (`retention_rule` + `retention_months`), não prosa — é o que
+permitirá calcular alertas de vencimento e de descarte.
+
+Todo documento pertence a uma das cinco **famílias** (qualidade/gestão, projetos/obra, suprimentos,
+comercial/cliente, pessoas/segurança), e o acesso é concedido por família em `user_family_access`.
+Isso não é conveniência: 31 dos 86 tipos carregam dado pessoal. Sem essa barreira, o mestre de obra
+perguntando no chat poderia receber trecho de ficha de funcionário ou ASO — o assistente viraria
+canal de vazamento (LGPD).
+
+A restrição é imposta pelo banco, como o isolamento por empresa: `tenant_session` fixa
+`app.current_families` na transação e as policies recusam qualquer família fora da lista. Lista
+vazia não devolve nada (fail-closed) — quem nunca foi liberado não vê documento algum, em vez de ver
+tudo. Um usuário de campo recém-cadastrado recebe apenas qualidade e obra; RH e cliente exigem
+liberação explícita. Ler e arquivar são permissões separadas (`can_upload`).
+
 ### Isolamento entre empresas (multi-tenant)
 
 O isolamento é garantido pelo **banco**, não só pelo código:

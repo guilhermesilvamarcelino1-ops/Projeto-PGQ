@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 
 from app.auth import Principal, get_current_admin
-from app.db import tenant_session
 from app.models import Conversation, Message
 from app.schemas import QuestionLogOut
+from app.services.access import authorized_session
 
 router = APIRouter(prefix="/admin/questions", tags=["admin"])
 
@@ -15,7 +15,7 @@ async def list_questions(
     limit: int = Query(50, le=200),
     admin: Principal = Depends(get_current_admin),
 ):
-    async with tenant_session(admin.company_id) as db:
+    async with authorized_session(admin) as (db, _families):
         result = await db.execute(
             select(Message)
             .join(Conversation, Message.conversation_id == Conversation.id)

@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Sequence
 from contextlib import asynccontextmanager
 
 from sqlalchemy import text
@@ -29,14 +30,20 @@ async def get_db() -> AsyncSession:
 
 
 @asynccontextmanager
-async def tenant_session(company_id: uuid.UUID):
-    """Sessão com o contexto da empresa fixado por transação via set_config
-    (is_local=true). Toda query aqui dentro é filtrada pelo RLS por company_id;
-    sem esse contexto o banco não devolve nenhuma linha das tabelas de conteúdo."""
+async def tenant_session(company_id: uuid.UUID, families: Sequence[str] = ()):
+    """Sessão com empresa E famílias permitidas fixadas por transação (set_config
+    local). Toda query aqui dentro é filtrada pelo RLS: sem contexto de empresa, ou
+    para uma família fora da lista, o banco não devolve nenhuma linha.
+
+    `families` vazio é fail-closed de propósito — quem não recebeu acesso não vê
+    documento nenhum, em vez de ver tudo."""
     async with async_session() as session:
         async with session.begin():
             await session.execute(
-                text("select set_config('app.current_company_id', :cid, true)"),
-                {"cid": str(company_id)},
+                text(
+                    "select set_config('app.current_company_id', :cid, true),"
+                    "       set_config('app.current_families', :fam, true)"
+                ),
+                {"cid": str(company_id), "fam": ",".join(families)},
             )
             yield session

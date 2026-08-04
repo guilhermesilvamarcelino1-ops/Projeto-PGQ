@@ -2,7 +2,18 @@ import uuid
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import ARRAY, Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import (
+    ARRAY,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -71,6 +82,12 @@ class Document(Base):
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     status: Mapped[str] = mapped_column(String, default="active")
 
+    # Família do documento na taxonomia: é por ela que o acesso é concedido.
+    document_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("document_types.id"), nullable=True
+    )
+    family: Mapped[str] = mapped_column(String, nullable=False)
+
     # Origem do documento. 'upload' = enviado pelo painel; os demais vêm de conector,
     # onde o arquivo permanece no sistema do cliente e só o índice é nosso.
     source_type: Mapped[str] = mapped_column(String, default="upload", nullable=False)
@@ -88,6 +105,8 @@ class DocumentChunk(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("documents.id"), nullable=False)
     company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
+    # Repetida do documento para a busca vetorial filtrar por permissão sem join.
+    family: Mapped[str] = mapped_column(String, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     embedding = mapped_column(Vector(EMBEDDING_DIM), nullable=False)
     page_ref: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -144,6 +163,28 @@ class DocumentType(Base):
     contains_personal_data: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class UserFamilyAccess(Base):
+    """Quem pode ver cada família de documento. Ausência de linha significa SEM acesso —
+    nunca o contrário. É o que impede o chat do time de campo de alcançar documento de
+    RH ou de cliente (LGPD)."""
+
+    __tablename__ = "user_family_access"
+    __table_args__ = (
+        CheckConstraint(
+            "family in ('qualidade_gestao','projetos_obra','suprimentos','comercial_cliente','pessoas_seguranca')",
+            name="user_family_access_family_check",
+        ),
+        UniqueConstraint("user_id", "family", name="user_family_access_user_family_uniq"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    family: Mapped[str] = mapped_column(String, nullable=False)
+    can_upload: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

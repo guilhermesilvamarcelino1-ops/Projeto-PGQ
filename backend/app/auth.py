@@ -75,28 +75,32 @@ async def get_principal(credentials: HTTPAuthorizationCredentials = Depends(bear
     return _decode(credentials)
 
 
-def create_document_link_token(document_id: uuid.UUID, company_id: uuid.UUID) -> str:
+def create_document_link_token(document_id: uuid.UUID, company_id: uuid.UUID, family: str) -> str:
     """Token curto embutido no link do documento. O WhatsApp não envia cabeçalho de
-    autenticação, então o próprio link carrega a autorização — assinada, com validade
-    e restrita a um documento de uma empresa."""
+    autenticação, então o próprio link carrega a autorização — assinada, com validade,
+    e restrita a um documento de uma empresa.
+
+    A família viaja no token porque o link é gerado no momento em que a pessoa tinha
+    acesso àquele documento; ao abrir, é ela que o RLS usa para liberar só essa linha."""
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.document_link_expires_minutes)
     payload = {
         "doc": str(document_id),
         "company_id": str(company_id),
+        "family": family,
         "scope": "document_link",
         "exp": expire,
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
-def read_document_link_token(token: str) -> tuple[uuid.UUID, uuid.UUID]:
-    """Devolve (document_id, company_id) do link, ou 401 se inválido/expirado."""
+def read_document_link_token(token: str) -> tuple[uuid.UUID, uuid.UUID, str]:
+    """Devolve (document_id, company_id, family) do link, ou 401 se inválido/expirado."""
     unauthorized = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Link inválido ou expirado")
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         if payload.get("scope") != "document_link":
             raise unauthorized
-        return uuid.UUID(payload["doc"]), uuid.UUID(payload["company_id"])
+        return uuid.UUID(payload["doc"]), uuid.UUID(payload["company_id"]), payload["family"]
     except (JWTError, KeyError, ValueError):
         raise unauthorized
 

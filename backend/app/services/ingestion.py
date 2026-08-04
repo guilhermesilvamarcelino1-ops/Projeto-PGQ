@@ -42,6 +42,7 @@ async def ingest_document(
     title: str,
     category: str,
     kind: str,
+    family: str,
     site_id: uuid.UUID | None,
     uploaded_by: uuid.UUID | None,
     filename: str,
@@ -57,6 +58,7 @@ async def ingest_document(
         title=title,
         category=category,
         kind=kind,
+        family=family,
         site_id=site_id,
         file_path=stored_path,
         version=version,
@@ -76,6 +78,7 @@ async def ingest_document(
                 DocumentChunk(
                     document_id=document.id,
                     company_id=company_id,
+                    family=family,
                     content=raw_chunk.content,
                     embedding=embedding,
                     page_ref=raw_chunk.page_ref,

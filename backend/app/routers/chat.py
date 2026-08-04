@@ -7,9 +7,9 @@ from sqlalchemy import select
 
 from app.auth import Principal, get_principal
 from app.config import settings
-from app.db import tenant_session
 from app.models import Conversation, Message, User
 from app.schemas import ChatResponse, SourceRef
+from app.services.access import authorized_session
 from app.services.contacts import find_responsible_contact
 from app.services.rag import answer_question
 from app.services.transcription import transcribe_audio
@@ -56,8 +56,9 @@ async def send_message(
         # MVP: a foto só fica anexada como registro — sem análise visual nesta fase.
         query_text = text or "(foto anexada, sem pergunta em texto)"
 
-    # Todo o trabalho de dados roda com o contexto da empresa fixado (RLS ativo).
-    async with tenant_session(company_id) as db:
+    # Todo o trabalho de dados roda com empresa E famílias permitidas fixadas: a busca
+    # nunca alcança documento de família que esta pessoa não pode ver (RH, cliente).
+    async with authorized_session(principal) as (db, _families):
         user = (await db.execute(select(User).where(User.id == principal.user_id))).scalar_one_or_none()
         if user is None:
             raise HTTPException(status_code=404, detail="Usuário não encontrado")

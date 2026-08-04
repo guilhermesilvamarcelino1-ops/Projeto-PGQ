@@ -130,6 +130,7 @@ def build_document_url(
     company_id: uuid.UUID,
     page_ref: int | None = None,
     external_url: str | None = None,
+    family: str = "qualidade_gestao",
 ) -> str:
     """Link para o documento citado.
 
@@ -140,7 +141,7 @@ def build_document_url(
     """
     if external_url:
         return external_url
-    token = create_document_link_token(document_id, company_id)
+    token = create_document_link_token(document_id, company_id, family)
     url = f"{settings.public_base_url.rstrip('/')}/documents/{document_id}/file?t={urlquote(token)}"
     if page_ref:
         url += f"#page={page_ref}"
@@ -263,7 +264,11 @@ async def answer_procedure_question(
                 page_ref=chunk.page_ref,
                 quote=data.get("quote") or None,
                 url=build_document_url(
-                    chunk.document_id, company_id, chunk.page_ref, external_url=chunk.external_url
+                    chunk.document_id,
+                    company_id,
+                    chunk.page_ref,
+                    external_url=chunk.external_url,
+                    family=chunk.family,
                 ),
             )
             return RagResult(
@@ -299,7 +304,9 @@ async def answer_document_request(
         )
         return RagResult(answer=f"{first}\n\n{second}", had_fallback=True)
 
-    url = build_document_url(document.id, company_id, external_url=document.external_url)
+    url = build_document_url(
+        document.id, company_id, external_url=document.external_url, family=document.family
+    )
     source = Source(document_title=document.title, document_id=document.id, url=url)
     prefix = _greeting(user_first_name)
     answer = (

@@ -9,6 +9,7 @@ from app.auth import Principal, get_current_admin, read_document_link_token
 from app.db import tenant_session
 from app.models import Document
 from app.schemas import DocumentOut, DocumentUploadResponse
+from app.services.access import FAMILIES, authorized_session, resolve_upload_families
 from app.services.ingestion import ingest_document
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -17,18 +18,24 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 # permite abrir o documento direto na página citada (e, adiante, destacar o trecho).
 PDF_CONTENT_TYPES = {"application/pdf"}
 
+# Enquanto o classificador não define a família a partir do tipo do documento,
+# derivamos do que já sabemos: procedimento é material do SGQ; administrativo
+# (alvará, ART, contrato de obra) pertence à família de obra na taxonomia.
+FAMILY_BY_KIND = {"procedimento": "qualidade_gestao", "administrativo": "projetos_obra"}
+
 
 @router.post("/upload", response_model=DocumentUploadResponse)
 async def upload_document(
     title: str = Form(...),
     category: str = Form(...),
     kind: str = Form(...),
+    family: str | None = Form(None),
     site_id: uuid.UUID | None = Form(None),
     plain_text: str | None = Form(None),
     file: UploadFile | None = File(None),
     admin: Principal = Depends(get_current_admin),
 ):
-    if kind not in ("procedimento", "administrativo"):
+    if kind not in FAMILY_BY_KIND:
         raise HTTPException(status_code=400, detail="kind deve ser 'procedimento' ou 'administrativo'")
     if file is None and not plain_text:
         raise HTTPException(status_code=400, detail="Envie um arquivo ou texto colado")
@@ -42,17 +49,28 @@ async def upload_document(
             ),
         )
 
+    family = family or FAMILY_BY_KIND[kind]
+    if family not in FAMILIES:
+        raise HTTPException(status_code=400, detail=f"Família inválida: {family}")
+
     file_bytes = await file.read() if file is not None else None
     filename = file.filename if file is not None else f"{title}.txt"
     content_type = file.content_type if file is not None else "text/plain"
 
-    async with tenant_session(admin.company_id) as db:
+    async with authorized_session(admin) as (db, _families):
+        permitidas = await resolve_upload_families(db, user_id=admin.user_id, is_admin=admin.is_admin)
+        if family not in permitidas:
+            raise HTTPException(
+                status_code=403, detail="Você não tem permissão para arquivar documentos desta família"
+            )
+
         document, chunks_created = await ingest_document(
             db,
             company_id=admin.company_id,
             title=title,
             category=category,
             kind=kind,
+            family=family,
             site_id=site_id,
             uploaded_by=admin.user_id,
             filename=filename,
@@ -68,20 +86,21 @@ async def upload_document(
 
 @router.get("", response_model=list[DocumentOut])
 async def list_documents(admin: Principal = Depends(get_current_admin)):
-    async with tenant_session(admin.company_id) as db:
+    async with authorized_session(admin) as (db, _families):
         result = await db.execute(select(Document).order_by(Document.uploaded_at.desc()))
         return result.scalars().all()
 
 
 @router.get("/{document_id}/file")
 async def get_document_file(document_id: uuid.UUID, t: str = Query(..., description="Token do link")):
-    """Serve o arquivo do procedimento pelo link enviado ao usuário. A autorização vem
-    do token assinado na URL (o WhatsApp não envia cabeçalho), restrito a este documento."""
-    token_doc_id, company_id = read_document_link_token(t)
+    """Serve o arquivo pelo link enviado ao usuário. A autorização vem do token assinado
+    na URL (o WhatsApp não envia cabeçalho), restrito a este documento e à família que a
+    pessoa podia ver quando o link foi gerado."""
+    token_doc_id, company_id, family = read_document_link_token(t)
     if token_doc_id != document_id:
         raise HTTPException(status_code=403, detail="Link não corresponde ao documento")
 
-    async with tenant_session(company_id) as db:
+    async with tenant_session(company_id, families=(family,)) as db:
         result = await db.execute(select(Document).where(Document.id == document_id))
         document = result.scalar_one_or_none()
         if document is None:
@@ -108,7 +127,7 @@ async def get_document_file(document_id: uuid.UUID, t: str = Query(..., descript
 
 @router.post("/{document_id}/archive", response_model=DocumentOut)
 async def archive_document(document_id: uuid.UUID, admin: Principal = Depends(get_current_admin)):
-    async with tenant_session(admin.company_id) as db:
+    async with authorized_session(admin) as (db, _families):
         result = await db.execute(select(Document).where(Document.id == document_id))
         document = result.scalar_one_or_none()
         if document is None:
