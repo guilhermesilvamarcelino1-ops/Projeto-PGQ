@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.auth import hash_secret
 from app.models import Company, Site, User
+from app.services.identity import normalize_phone
 
 
 async def seed(args):
@@ -48,11 +49,13 @@ async def seed(args):
             email=args.admin_email,
             password_hash=hash_secret(args.admin_password),
         )
+        # Telefone sempre gravado normalizado: é a chave que identifica a pessoa
+        # (e a empresa) quando a mensagem chega pelo número central do WhatsApp.
         field_user = User(
             company_id=company.id,
             name=args.field_name,
             role="mestre de obra",
-            phone_number=args.field_phone,
+            phone_number=normalize_phone(args.field_phone),
             pin_hash=hash_secret(args.field_pin),
             site_id=site.id,
         )
@@ -60,7 +63,7 @@ async def seed(args):
             company_id=company.id,
             name="Eng. Responsável",
             role="engenheiro de obra",
-            phone_number=args.engineer_phone,
+            phone_number=normalize_phone(args.engineer_phone),
             site_id=site.id,
         )
         db.add_all([admin, field_user, engineer])
