@@ -96,6 +96,57 @@ class DocumentChunk(Base):
     document: Mapped["Document"] = relationship(back_populates="chunks")
 
 
+class DocumentType(Base):
+    """Taxonomia documental da empresa (o RQ 15 dela). Fica no banco, e não no prompt,
+    para que cada empresa tenha a sua, para que o modelo escolha entre linhas que
+    existem em vez de recordar uma tabela, e para que 'não está mapeado' seja fato
+    verificável. A retenção é regra computável — base dos alertas de vencimento."""
+
+    __tablename__ = "document_types"
+    __table_args__ = (
+        CheckConstraint(
+            "family in ('qualidade_gestao','projetos_obra','suprimentos','comercial_cliente','pessoas_seguranca')",
+            name="document_types_family_check",
+        ),
+        CheckConstraint(
+            "medium in ('eletronico','fisico','ambos','sistema')", name="document_types_medium_check"
+        ),
+        CheckConstraint(
+            "retention_rule in ('permanente','ate_proxima_atualizacao','fim_de_obra','meses',"
+            "'ate_validade','tempo_contratacao')",
+            name="document_types_retention_rule_check",
+        ),
+        CheckConstraint(
+            "disposal in ('arquivo_permanente','substituir','destruir','acervo_tecnico')",
+            name="document_types_disposal_check",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
+
+    code: Mapped[str | None] = mapped_column(String, nullable=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    family: Mapped[str] = mapped_column(String, nullable=False)
+
+    medium: Mapped[str] = mapped_column(String, nullable=False)
+    storage_path: Mapped[str | None] = mapped_column(String, nullable=True)
+    physical_location: Mapped[str | None] = mapped_column(String, nullable=True)
+    external_system: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    recovery_key: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    retention_rule: Mapped[str] = mapped_column(String, nullable=False)
+    retention_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    disposal: Mapped[str] = mapped_column(String, nullable=False)
+
+    has_revisions: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    contains_personal_data: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Conversation(Base):
     __tablename__ = "conversations"
     __table_args__ = (CheckConstraint("channel in ('web','whatsapp')", name="conversations_channel_check"),)
