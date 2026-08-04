@@ -10,6 +10,11 @@
 --   select phone_number, count(*) from users
 --   where phone_number is not null group by phone_number having count(*) > 1;
 
+-- PIN do login de campo na versão web (o WhatsApp dispensa: o número verificado
+-- pela Meta já identifica a pessoa). A coluna acompanha o modelo desde o login de
+-- campo, mas faltava no banco.
+alter table public.users add column if not exists pin_hash text;
+
 drop index if exists users_phone_number_idx;
 
 create unique index users_phone_number_uniq
