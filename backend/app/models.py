@@ -188,6 +188,36 @@ class UserFamilyAccess(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class DriveConnection(Base):
+    """Autorização da empresa para o sistema gravar no drive dela. O acervo continua
+    sendo do cliente — guardamos só a permissão de escrever lá."""
+
+    __tablename__ = "drive_connections"
+    __table_args__ = (
+        CheckConstraint(
+            "provider in ('onedrive','sharepoint','google_drive')", name="drive_connections_provider_check"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
+    provider: Mapped[str] = mapped_column(String, nullable=False)
+
+    account_email: Mapped[str | None] = mapped_column(String, nullable=True)
+    drive_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    root_path: Mapped[str] = mapped_column(String, default="Procede", nullable=False)
+
+    # Credencial de longa duração: nunca sai em resposta de API.
+    refresh_token: Mapped[str] = mapped_column(String, nullable=False)
+    access_token: Mapped[str | None] = mapped_column(String, nullable=True)
+    access_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    connected_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    connected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
 class Conversation(Base):
     __tablename__ = "conversations"
     __table_args__ = (CheckConstraint("channel in ('web','whatsapp')", name="conversations_channel_check"),)

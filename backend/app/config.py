@@ -24,5 +24,11 @@ class Settings(BaseSettings):
 
     assistant_name: str = "Procede"
 
+    # Conector OneDrive/SharePoint (Microsoft Graph). O segredo nunca vai para o
+    # repositório — só para o .env do ambiente.
+    microsoft_client_id: str | None = None
+    microsoft_client_secret: str | None = None
+    microsoft_redirect_uri: str = "http://localhost:8000/auth/microsoft/callback"
+
 
 settings = Settings()
