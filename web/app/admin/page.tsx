@@ -40,6 +40,9 @@ export default function AdminHome() {
         <p>
           <Link href="/admin/questions">→ Perguntas recentes / sem resposta boa</Link>
         </p>
+        <p>
+          <Link href="/admin/conexoes">→ Conexões (onde os documentos são guardados)</Link>
+        </p>
       </div>
     </div>
   );

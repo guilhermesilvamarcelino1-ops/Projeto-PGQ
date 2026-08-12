@@ -1,7 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { ChatResponse, fieldLogin, sendChatMessage } from "@/lib/api";
+import {
+  ChatResponse,
+  PropostaArquivamento,
+  fieldLogin,
+  proposeFiling,
+  resolveFiling,
+  sendChatMessage,
+} from "@/lib/api";
 
 interface DisplayMessage {
   role: "user" | "assistant";
@@ -49,12 +56,57 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Duas intenções na mesma conversa: tirar dúvida ou guardar um documento.
+  const [modo, setModo] = useState<"perguntar" | "arquivar">("perguntar");
+  const [proposta, setProposta] = useState<PropostaArquivamento | null>(null);
+
   async function handleLogin() {
     setAuthError(null);
     try {
       setToken(await fieldLogin(phone, pin));
     } catch (e) {
       setAuthError((e as Error).message);
+    }
+  }
+
+  async function handleArquivar() {
+    if (!token || !file) {
+      setError("Escolha o arquivo do documento.");
+      return;
+    }
+    setError(null);
+    setLoading(true);
+    setMessages((m) => [...m, { role: "user", text: `[documento] ${file.name}` }]);
+
+    const form = new FormData();
+    form.append("file", file);
+    if (text) form.append("hint", text);
+
+    try {
+      const res = await proposeFiling(form, token);
+      setMessages((m) => [...m, { role: "assistant", text: res.mensagem, fallback: !res.mapeado }]);
+      // Só há o que confirmar quando o documento foi identificado na taxonomia.
+      setProposta(res.mapeado ? res : null);
+      setText("");
+      setFile(null);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleResolver(acao: "confirm" | "reject") {
+    if (!token || !proposta?.pendencia_id) return;
+    setLoading(true);
+    try {
+      const res = await resolveFiling(proposta.pendencia_id, acao, token);
+      setMessages((m) => [...m, { role: "assistant", text: res.mensagem }]);
+      setProposta(null);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -148,40 +200,107 @@ export default function ChatPage() {
         )}
       </div>
 
+      {proposta && (
+        <div className="card" style={{ borderColor: "#1f6feb" }}>
+          <p className="muted" style={{ marginTop: 0 }}>
+            Nada foi guardado ainda — confirme para arquivar.
+          </p>
+          <div className="row">
+            <button className="btn" onClick={() => handleResolver("confirm")} disabled={loading}>
+              ✅ Sim, arquivar
+            </button>
+            <button
+              className="btn"
+              style={{ background: "#6b7280" }}
+              onClick={() => handleResolver("reject")}
+              disabled={loading}
+            >
+              Não é isso
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="card">
-        <div className="row">
-          <select
-            className="select"
-            style={{ maxWidth: 140 }}
-            value={mediaType}
-            onChange={(e) => setMediaType(e.target.value as "text" | "audio" | "image")}
+        <div className="row" style={{ marginBottom: 10 }}>
+          <button
+            className="btn"
+            style={{ background: modo === "perguntar" ? "#1f6feb" : "#9aa4ae" }}
+            onClick={() => setModo("perguntar")}
           >
-            <option value="text">Texto</option>
-            <option value="audio">Áudio</option>
-            <option value="image">Foto</option>
-          </select>
-          {mediaType !== "text" && (
+            Tirar dúvida
+          </button>
+          <button
+            className="btn"
+            style={{ background: modo === "arquivar" ? "#1f6feb" : "#9aa4ae" }}
+            onClick={() => setModo("arquivar")}
+          >
+            Guardar documento
+          </button>
+        </div>
+
+        {modo === "perguntar" ? (
+          <>
+            <div className="row">
+              <select
+                className="select"
+                style={{ maxWidth: 140 }}
+                value={mediaType}
+                onChange={(e) => setMediaType(e.target.value as "text" | "audio" | "image")}
+              >
+                <option value="text">Texto</option>
+                <option value="audio">Áudio</option>
+                <option value="image">Foto</option>
+              </select>
+              {mediaType !== "text" && (
+                <input
+                  type="file"
+                  accept={mediaType === "audio" ? "audio/*" : "image/*"}
+                  onChange={(e) => setFile(e.target.files?.[0] || null)}
+                />
+              )}
+            </div>
+            <textarea
+              className="textarea"
+              style={{ marginTop: 8 }}
+              rows={3}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={
+                mediaType === "image" ? "Descreva sua dúvida sobre a foto" : "Digite sua pergunta"
+              }
+            />
+            <div className="row" style={{ marginTop: 8 }}>
+              <button className="btn" onClick={handleSend} disabled={loading}>
+                {loading ? "Enviando..." : "Enviar"}
+              </button>
+              {error && <span style={{ color: "#c0392b" }}>{error}</span>}
+            </div>
+          </>
+        ) : (
+          <>
+            <label>Documento (PDF ou foto)</label>
             <input
               type="file"
-              accept={mediaType === "audio" ? "audio/*" : "image/*"}
+              accept="application/pdf,image/*"
               onChange={(e) => setFile(e.target.files?.[0] || null)}
             />
-          )}
-        </div>
-        <textarea
-          className="textarea"
-          style={{ marginTop: 8 }}
-          rows={3}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={mediaType === "image" ? "Descreva sua dúvida sobre a foto" : "Digite sua pergunta"}
-        />
-        <div className="row" style={{ marginTop: 8 }}>
-          <button className="btn" onClick={handleSend} disabled={loading}>
-            {loading ? "Enviando..." : "Enviar"}
-          </button>
-          {error && <span style={{ color: "#c0392b" }}>{error}</span>}
-        </div>
+            <textarea
+              className="textarea"
+              style={{ marginTop: 8 }}
+              rows={2}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="Opcional: diga que documento é. Ex.: rastreabilidade da concretagem de hoje"
+            />
+            <div className="row" style={{ marginTop: 8 }}>
+              <button className="btn" onClick={handleArquivar} disabled={loading}>
+                {loading ? "Analisando..." : "Enviar documento"}
+              </button>
+              {error && <span style={{ color: "#c0392b" }}>{error}</span>}
+            </div>
+          </>
+        )}
       </div>
       <p className="muted">
         A resposta vem sempre dos procedimentos cadastrados da sua empresa. Quando não há resposta no
