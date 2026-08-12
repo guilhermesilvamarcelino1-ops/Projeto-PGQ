@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import admin, auth, chat, documents, drive
+from app.routers import admin, auth, chat, documents, drive, filing
 
 app = FastAPI(title="Procede API")
 
@@ -18,6 +18,7 @@ app.include_router(chat.router)
 app.include_router(admin.router)
 app.include_router(drive.router)
 app.include_router(drive.callback_router)
+app.include_router(filing.router)
 
 
 @app.get("/health")

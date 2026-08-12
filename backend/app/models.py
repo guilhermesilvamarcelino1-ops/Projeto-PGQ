@@ -14,7 +14,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -216,6 +216,39 @@ class DriveConnection(Base):
     connected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class PendingFiling(Base):
+    """Documento classificado aguardando a confirmação de um toque. Entre o envio e a
+    confirmação, o arquivo fica fora do acervo do cliente."""
+
+    __tablename__ = "pending_filings"
+    __table_args__ = (
+        CheckConstraint(
+            "status in ('aguardando','confirmado','recusado','expirado')", name="pending_filings_status_check"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
+    family: Mapped[str] = mapped_column(String, nullable=False)
+    document_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("document_types.id"), nullable=True
+    )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+    proposal: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+    staged_path: Mapped[str] = mapped_column(String, nullable=False)
+    original_filename: Mapped[str | None] = mapped_column(String, nullable=True)
+    content_type: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    status: Mapped[str] = mapped_column(String, default="aguardando", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id"), nullable=True
+    )
 
 
 class Conversation(Base):
